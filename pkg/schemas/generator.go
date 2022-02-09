@@ -72,6 +72,7 @@ func (Generator) RegisterMarkers(into *markers.Registry) error {
 }
 
 func (g Generator) Generate(ctx *genall.GenerationContext) error {
+	fmt.Println("generate******")
 	parser := &crd.Parser{
 		Collector:           ctx.Collector,
 		Checker:             ctx.Checker,
@@ -81,6 +82,32 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	for _, root := range ctx.Roots {
 		parser.NeedPackage(root)
 	}
+
+	/////////////////////
+	// metav1Pkg := crd.FindMetav1(ctx.Roots)
+	// if metav1Pkg == nil {
+	// 	// no objects in the roots, since nothing imported metav1
+	// 	return nil
+	// }
+
+	// // TODO: allow selecting a specific object
+	// kubeKinds := crd.FindKubeKinds(parser, metav1Pkg)
+	// if len(kubeKinds) == 0 {
+	// 	// no objects in the roots
+	// 	return nil
+	// }
+	// for groupKind := range kubeKinds {
+	// 	m := 100
+	// 	parser.NeedCRDFor(groupKind, &m)
+	// 	crdRaw := parser.CustomResourceDefinitions[groupKind]
+	// 	// crd.addAttribution(&crdRaw)
+
+	// 	// Prevent the top level metadata for the CRD to be generate regardless of the intention in the arguments
+	// 	crd.FixTopLevelMetadata(crdRaw)
+	// 	// fmt.Printf("group kind = %s, crdRaw = %s\n", groupKind, parser.CustomResourceDefinitions[groupKind])
+
+	// }
+	/////////////////////
 
 	context := &GeneratorContext{
 		ctx:    ctx,
@@ -96,6 +123,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	documents := make(map[string]*apiext.JSONSchemaProps)
 	//nolint:gocritic
 	for typeIdent, typeSchema := range parser.Schemata {
+		fmt.Printf("generate, type = %s, typeIdentSchema = %s, allof = %s\n", typeIdent, &typeSchema, typeSchema.AllOf)
 		documentName := context.documentNameFor(typeIdent.Package)
 		document, exists := documents[documentName]
 		if !exists {
@@ -106,9 +134,85 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 			documents[documentName] = document
 		}
 		document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
+
+		// CRD
+		info, knownInfo := parser.Types[typeIdent]
+		if !knownInfo {
+			fmt.Printf("unknown type %s", typeIdent.Name)
+			// return g.output(documents)
+		} else {
+
+			if info.Markers.Get(objectMarker.Name) != nil {
+				documentName := fmt.Sprintf("%s.json", info.Name)
+				document, exists := documents[documentName]
+				if !exists {
+					fmt.Printf("inside if document %s\n", typeIdent.Name)
+					document = &apiext.JSONSchemaProps{
+						Title:       documentName,
+						Definitions: make(apiext.JSONSchemaDefinitions),
+					}
+					documents[documentName] = document
+				}
+				removeMetadataProps(&typeSchema)
+				document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
+
+				listFields := context.GetFields(typeIdent)
+				fmt.Printf("list fields %s\n", listFields)
+				for _, fieldType := range listFields {
+					typeSchemaField := parser.Schemata[fieldType]
+					removeMetadataProps(&typeSchemaField)
+					document.Definitions[context.definitionNameFor(documentName, fieldType)] = typeSchemaField
+				}
+			}
+		}
 	}
 
 	return g.output(documents)
+}
+
+func (context *GeneratorContext) GetFields(typ crd.TypeIdent) []crd.TypeIdent {
+	ListFields := []crd.TypeIdent{}
+	info, knownInfo := context.parser.Types[typ]
+	if !knownInfo {
+		fmt.Printf("unknown type %s\n", typ.Name)
+		return ListFields
+	} else {
+		fields := info.Fields
+		for _, field := range fields {
+			type_name := field.RawField.Type
+			typeNameStr := fmt.Sprintf("%s", type_name)
+			words := strings.Fields(typeNameStr)
+			word := words[len(words)-1]
+			if word[len(word)-1:] == "}" {
+				word = word[:len(word)-1]
+			}
+			fmt.Printf("field type name %s, words = %s\n", type_name, word)
+			typeIdentField := crd.TypeIdent{Package: typ.Package, Name: word}
+			_, fieldKnownInfo := context.parser.Types[typeIdentField]
+			if !fieldKnownInfo {
+				// fmt.Printf("unknown type %s\n", typ.Name)
+				continue
+			}
+			ListFields = append(ListFields, typeIdentField)
+			ListFields = append(ListFields, context.GetFields(typeIdentField)...)
+		}
+	}
+	// fmt.Printf("unknown type %s", typ.Name)
+
+	return ListFields
+}
+
+func removeMetadataProps(v *apiext.JSONSchemaProps) {
+	if _, ok := v.Properties["metadata"]; ok {
+		delete(v.Properties, "metadata")
+		v.AllOf = nil
+		// meta := &m
+		// if meta.Description != "" {
+		// 	meta.Description = ""
+		// 	v.Properties["metadata"] = ""
+
+		// }
+	}
 }
 
 func (g Generator) output(documents map[string]*apiext.JSONSchemaProps) error {
@@ -148,6 +252,8 @@ func (g Generator) output(documents map[string]*apiext.JSONSchemaProps) error {
 
 func (context *GeneratorContext) documentNameFor(pkg *loader.Package) string {
 	isManaged := context.pkgMarkers[pkg].Get(schemaMarker.Name) != nil
+	isObjectMArk := context.pkgMarkers[pkg].Get(objectMarker.Name) != nil
+	fmt.Printf("documentName, %s, object %t, schema %t\n", pkg.Name, isObjectMArk, isManaged)
 	if isManaged {
 		return fmt.Sprintf("%s.json", pkg.Name)
 	}
@@ -193,6 +299,7 @@ func (context *GeneratorContext) NeedSchemaFor(typ crd.TypeIdent) {
 	}
 
 	info, knownInfo := p.Types[typ]
+	fmt.Printf("info name = %s, marker = %t\n", info.Name, info.Markers.Get(objectMarker.Name) != nil)
 	if !knownInfo {
 		typ.Package.AddError(fmt.Errorf("unknown type %s", typ))
 		return
@@ -212,6 +319,7 @@ func (context *GeneratorContext) NeedSchemaFor(typ crd.TypeIdent) {
 	context.pkgMarkers[typ.Package] = pkgMarkers
 
 	schema := infoToSchema(ctxForInfo)
+	fmt.Printf("info name = %s, schema = %s\n", info.Name, schema)
 
 	p.Schemata[typ] = *schema
 }
