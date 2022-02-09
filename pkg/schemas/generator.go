@@ -138,10 +138,9 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		// CRD
 		info, knownInfo := parser.Types[typeIdent]
 		if !knownInfo {
-			fmt.Printf("unknown type %s", typeIdent.Name)
+			fmt.Printf("unknown type %s\n", typeIdent.Name)
 			// return g.output(documents)
 		} else {
-
 			if info.Markers.Get(objectMarker.Name) != nil {
 				documentName := fmt.Sprintf("%s.json", info.Name)
 				document, exists := documents[documentName]
@@ -156,8 +155,8 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 				removeMetadataProps(&typeSchema)
 				document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
 
-				listFields := context.GetFields(typeIdent)
-				fmt.Printf("list fields %s\n", listFields)
+				listFields, isTaxonomy := context.GetFields(typeIdent)
+				fmt.Printf("list fields %s, %t\n", listFields, isTaxonomy)
 				for _, fieldType := range listFields {
 					typeSchemaField := parser.Schemata[fieldType]
 					removeMetadataProps(&typeSchemaField)
@@ -170,17 +169,31 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	return g.output(documents)
 }
 
-func (context *GeneratorContext) GetFields(typ crd.TypeIdent) []crd.TypeIdent {
+func (context *GeneratorContext) GetFields(typ crd.TypeIdent) ([]crd.TypeIdent, bool) {
 	ListFields := []crd.TypeIdent{}
+	isTaxonomy := false
+	fmt.Printf("get fields type %s\n", typ.Package)
+
 	info, knownInfo := context.parser.Types[typ]
 	if !knownInfo {
 		fmt.Printf("unknown type %s\n", typ.Name)
-		return ListFields
+		return ListFields, false
 	} else {
 		fields := info.Fields
 		for _, field := range fields {
 			type_name := field.RawField.Type
+			fmt.Printf("field markers = %t\n", field.Markers.Get("optional") != nil)
+			// if field.Markers.Get("optional") != nil {
+			// 	continue
+			// }
 			typeNameStr := fmt.Sprintf("%s", type_name)
+			// isTaxonomy = strings.Contains(typeNameStr, "taxonomy")
+
+			if strings.Contains(typeNameStr, "taxonomy") == true {
+				isTaxonomy = true
+				continue
+			}
+
 			words := strings.Fields(typeNameStr)
 			word := words[len(words)-1]
 			if word[len(word)-1:] == "}" {
@@ -193,13 +206,15 @@ func (context *GeneratorContext) GetFields(typ crd.TypeIdent) []crd.TypeIdent {
 				// fmt.Printf("unknown type %s\n", typ.Name)
 				continue
 			}
-			ListFields = append(ListFields, typeIdentField)
-			ListFields = append(ListFields, context.GetFields(typeIdentField)...)
+			childListFields, childTaxonomy := context.GetFields(typeIdentField)
+			if childTaxonomy == true {
+				ListFields = append(ListFields, typeIdentField)
+				ListFields = append(ListFields, childListFields...)
+				isTaxonomy = true
+			}
 		}
 	}
-	// fmt.Printf("unknown type %s", typ.Name)
-
-	return ListFields
+	return ListFields, isTaxonomy
 }
 
 func removeMetadataProps(v *apiext.JSONSchemaProps) {
