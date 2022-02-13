@@ -113,16 +113,19 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 			if info.Markers.Get(objectMarker.Name) != nil {
 				documentName := fmt.Sprintf("%s.json", info.Name)
 				document, exists := documents[documentName]
+				listFields, _ := context.GetFields(typeIdent)
+				schemaPtr := parser.Schemata[typeIdent]
+				removeExtraProps(&schemaPtr, &listFields)
+				// fmt.Printf("type schema = %s\n", &typeSchema)
 				if !exists {
-					document = &apiext.JSONSchemaProps{
-						Title:       documentName,
-						Definitions: make(apiext.JSONSchemaDefinitions),
-					}
+
+					document = typeSchema.DeepCopy()
+					// document = &typeSchema
+					document.Title = documentName
+					document.Definitions = make(apiext.JSONSchemaDefinitions)
 					documents[documentName] = document
 				}
-				listFields, _ := context.GetFields(typeIdent)
-				removeExtraProps(&typeSchema, &listFields)
-				document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
+				// document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
 
 				// fmt.Printf("list fields %s, %t\n", listFields, isTaxonomy)
 				for _, fieldType := range listFields {
@@ -218,8 +221,9 @@ func removeExtraProps(v *apiext.JSONSchemaProps, fields *[]crd.TypeIdent) {
 		delete(v.Properties, "metadata")
 		v.AllOf = nil
 	}
-	for n, p := range v.Properties {
-		ref := getRef(&p)
+	for n := range v.Properties {
+		propPtr := v.Properties[n]
+		ref := getRef(&propPtr)
 		// fmt.Printf("property = %s, ref = %s, types = %s\n", n, ref, (p.AdditionalProperties))
 		if ref != nil && fields != nil {
 			pType := *ref
