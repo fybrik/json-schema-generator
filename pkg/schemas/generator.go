@@ -154,7 +154,7 @@ func (context *GeneratorContext) GetFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 			typeNameStr := fmt.Sprintf("%s", type_name)
 			// isTaxonomy = strings.Contains(typeNameStr, "taxonomy")
 
-			if strings.Contains(typeNameStr, "taxonomy") == true {
+			if strings.Contains(typeNameStr, "taxonomy") {
 				isTaxonomy = true
 				continue
 			}
@@ -171,7 +171,7 @@ func (context *GeneratorContext) GetFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 				continue
 			}
 			childListFields, childTaxonomy := context.GetFields(typeIdentField)
-			if childTaxonomy == true {
+			if childTaxonomy {
 				ListFields = append(ListFields, typeIdentField)
 				ListFields = append(ListFields, childListFields...)
 				isTaxonomy = true
@@ -225,7 +225,7 @@ func removeExtraProps(v *apiext.JSONSchemaProps, fields *[]crd.TypeIdent) {
 			pType := *ref
 			types := []string{}
 			// fmt.Printf("ref = %s\n", pType)
-			if strings.Contains(pType, "taxonomy") == true {
+			if strings.Contains(pType, "taxonomy") {
 				continue
 			}
 			split := strings.Split(pType, "/")
