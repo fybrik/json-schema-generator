@@ -24,6 +24,7 @@ var (
 	externalDocumentName = "external.json"
 	schemaMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:schema", markers.DescribesPackage, struct{}{}))
 	objectMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:object", markers.DescribesType, struct{}{}))
+	crdMarker            = markers.Must(markers.MakeDefinition("fybrik:validation:crd", markers.DescribesType, struct{}{}))
 )
 
 // Generator generates JSON schema objects.
@@ -61,13 +62,15 @@ func (Generator) RegisterMarkers(into *markers.Registry) error {
 		return err
 	}
 
-	if err := markers.RegisterAll(into, schemaMarker, objectMarker); err != nil {
+	if err := markers.RegisterAll(into, schemaMarker, objectMarker, crdMarker); err != nil {
 		return err
 	}
 	into.AddHelp(schemaMarker,
 		markers.SimpleHelp("object", "enable generation of JSON schema definition for the go structure"))
 	into.AddHelp(objectMarker,
 		markers.SimpleHelp("object", "enable generation of JSON schema object for the go structure"))
+	into.AddHelp(crdMarker,
+		markers.SimpleHelp("object", "enable generation of JSON schema object for the go structure of a CRD"))
 	return nil
 }
 
@@ -110,24 +113,19 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		// Generate a schema for types with "fybrik:validation:object" marker
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
-			if info.Markers.Get(objectMarker.Name) != nil {
+			if info.Markers.Get(crdMarker.Name) != nil {
 				documentName := fmt.Sprintf("%s.json", info.Name)
 				document, exists := documents[documentName]
-				listFields, _ := context.GetFields(typeIdent)
+				listFields, _ := context.getFields(typeIdent)
 				schemaPtr := parser.Schemata[typeIdent]
 				removeExtraProps(&schemaPtr, &listFields)
-				// fmt.Printf("type schema = %s\n", &typeSchema)
 				if !exists {
-
 					document = typeSchema.DeepCopy()
-					// document = &typeSchema
 					document.Title = documentName
 					document.Definitions = make(apiext.JSONSchemaDefinitions)
 					documents[documentName] = document
 				}
-				// document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
 
-				// fmt.Printf("list fields %s, %t\n", listFields, isTaxonomy)
 				for _, fieldType := range listFields {
 					typeSchemaField := parser.Schemata[fieldType]
 					removeExtraProps(&typeSchemaField, &listFields)
@@ -140,23 +138,18 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	return g.output(documents)
 }
 
-func (context *GeneratorContext) GetFields(typ crd.TypeIdent) ([]crd.TypeIdent, bool) {
+// Get the fields that related to taxonomy (has a taxonomy child)
+func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, bool) {
 	ListFields := []crd.TypeIdent{}
 	isTaxonomy := false
 	info, knownInfo := context.parser.Types[typ]
 	if !knownInfo {
-		// fmt.Printf("unknown type %s\n", typ.Name)
 		return ListFields, false
 	} else {
 		fields := info.Fields
 		for _, field := range fields {
 			type_name := field.RawField.Type
-			// if field.Markers.Get("optional") != nil {
-			// 	continue
-			// }
 			typeNameStr := fmt.Sprintf("%s", type_name)
-			// isTaxonomy = strings.Contains(typeNameStr, "taxonomy")
-
 			if strings.Contains(typeNameStr, "taxonomy") {
 				isTaxonomy = true
 				continue
@@ -167,13 +160,12 @@ func (context *GeneratorContext) GetFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 			if word[len(word)-1:] == "}" {
 				word = word[:len(word)-1]
 			}
-			// fmt.Printf("field type name %s, words = %s\n", type_name, word)
 			typeIdentField := crd.TypeIdent{Package: typ.Package, Name: word}
 			_, fieldKnownInfo := context.parser.Types[typeIdentField]
 			if !fieldKnownInfo {
 				continue
 			}
-			childListFields, childTaxonomy := context.GetFields(typeIdentField)
+			childListFields, childTaxonomy := context.getFields(typeIdentField)
 			if childTaxonomy {
 				ListFields = append(ListFields, typeIdentField)
 				ListFields = append(ListFields, childListFields...)
@@ -224,11 +216,9 @@ func removeExtraProps(v *apiext.JSONSchemaProps, fields *[]crd.TypeIdent) {
 	for n := range v.Properties {
 		propPtr := v.Properties[n]
 		ref := getRef(&propPtr)
-		// fmt.Printf("property = %s, ref = %s, types = %s\n", n, ref, (p.AdditionalProperties))
 		if ref != nil && fields != nil {
 			pType := *ref
 			types := []string{}
-			// fmt.Printf("ref = %s\n", pType)
 			if strings.Contains(pType, "taxonomy") {
 				continue
 			}
