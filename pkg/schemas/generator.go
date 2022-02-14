@@ -51,8 +51,8 @@ type GeneratorContext struct {
 func (Generator) CheckFilter() loader.NodeFilter {
 	return func(node ast.Node) bool {
 		// ignore interfaces
-		// _, isIface := node.(*ast.InterfaceType)
-		return true
+		_, isIface := node.(*ast.InterfaceType)
+		return !isIface
 	}
 }
 
@@ -81,9 +81,6 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		AllowDangerousTypes: g.AllowDangerousTypes != nil && *g.AllowDangerousTypes,
 	}
 	crd.AddKnownTypes(parser)
-	for _, root := range ctx.Roots {
-		parser.NeedPackage(root)
-	}
 
 	context := &GeneratorContext{
 		ctx:    ctx,
@@ -92,8 +89,26 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		pkgMarkers: make(map[*loader.Package]markers.MarkerValues),
 	}
 
+	// Load input packages
+	for _, root := range ctx.Roots {
+		parser.NeedPackage(root)
+		// Load package markers
+		pkgMarkers, err := markers.PackageMarkers(parser.Collector, root)
+		if err != nil {
+			root.AddError(err)
+		}
+		context.pkgMarkers[root] = pkgMarkers
+	}
+
+	// Scan loaded types
 	for typeIdent := range parser.Types {
-		context.NeedSchemaFor(typeIdent)
+		if pkgMarkers, hasMarkers := context.pkgMarkers[typeIdent.Package]; hasMarkers {
+			if pkgMarkers.Get(schemaMarker.Name) != nil {
+				// Loaded type is in a package with fybrik:validation:schema marker
+				// Get a JSON schema from that type (recursive)
+				context.NeedSchemaFor(typeIdent)
+			}
+		}
 	}
 
 	documents := make(map[string]*apiext.JSONSchemaProps)
