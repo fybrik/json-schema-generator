@@ -43,16 +43,26 @@ type Generator struct {
 }
 
 type GeneratorContext struct {
-	ctx        *genall.GenerationContext
-	parser     *crd.Parser
-	pkgMarkers map[*loader.Package]markers.MarkerValues
+	ctx          *genall.GenerationContext
+	parser       *crd.Parser
+	pkgDocuments []string
+	pkgMarkers   map[*loader.Package]markers.MarkerValues
 }
 
 func (Generator) CheckFilter() loader.NodeFilter {
 	return func(node ast.Node) bool {
-		// ignore interfaces
-		_, isIface := node.(*ast.InterfaceType)
-		return !isIface
+		switch node := node.(type) {
+		case *ast.InterfaceType:
+			// skip interfaces, we never care about references in them
+			return false
+		case *ast.Field:
+			_, hasTag := loader.ParseAstTag(node.Tag).Lookup("json")
+			// fields without JSON tags mean we have custom serialization,
+			// so only visit fields with tags.
+			return hasTag
+		default:
+			return true
+		}
 	}
 }
 
@@ -83,10 +93,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	crd.AddKnownTypes(parser)
 
 	context := &GeneratorContext{
-		ctx:    ctx,
-		parser: parser,
-		// documents:  make(map[string]*apiext.JSONSchemaProps),
-		pkgMarkers: make(map[*loader.Package]markers.MarkerValues),
+		ctx:          ctx,
+		parser:       parser,
+		pkgDocuments: []string{},
+		pkgMarkers:   make(map[*loader.Package]markers.MarkerValues),
 	}
 
 	// Load input packages
@@ -102,6 +112,13 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 
 	// Scan loaded types
 	for typeIdent := range parser.Types {
+		info, knownInfo := parser.Types[typeIdent]
+		if knownInfo {
+			if info.Markers.Get(crdMarker.Name) != nil {
+				context.pkgDocuments = append(context.pkgDocuments, typeIdent.Package.Name)
+				context.NeedSchemaFor(typeIdent)
+			}
+		}
 		if pkgMarkers, hasMarkers := context.pkgMarkers[typeIdent.Package]; hasMarkers {
 			if pkgMarkers.Get(schemaMarker.Name) != nil {
 				// Loaded type is in a package with fybrik:validation:schema marker
@@ -125,7 +142,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		}
 		document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
 
-		// Generate a schema for types with "fybrik:validation:object" marker
+		// Generate a schema for types with "fybrik:validation:crd" marker
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
 			if info.Markers.Get(crdMarker.Name) != nil {
@@ -133,7 +150,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 				document, exists := documents[documentName]
 				listFields, _ := context.getFields(typeIdent)
 				schemaPtr := parser.Schemata[typeIdent]
-				removeExtraProps(&schemaPtr, &listFields)
+				context.removeExtraProps(typeIdent, &schemaPtr, &listFields)
 				if !exists {
 					document = typeSchema.DeepCopy()
 					document.Title = documentName
@@ -143,7 +160,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 
 				for _, fieldType := range listFields {
 					typeSchemaField := parser.Schemata[fieldType]
-					removeExtraProps(&typeSchemaField, &listFields)
+					context.removeExtraProps(fieldType, &typeSchemaField, &listFields)
 					document.Definitions[context.definitionNameFor(documentName, fieldType)] = typeSchemaField
 				}
 			}
@@ -222,28 +239,37 @@ func getRef(prop *apiext.JSONSchemaProps) *string {
 	return nil
 }
 
-func removeExtraProps(v *apiext.JSONSchemaProps, fields *[]crd.TypeIdent) {
-	if _, ok := v.Properties["metadata"]; ok {
-
-		delete(v.Properties, "metadata")
-		v.AllOf = nil
-	}
-	for n := range v.Properties {
-		propPtr := v.Properties[n]
-		ref := getRef(&propPtr)
-		if ref != nil && fields != nil {
-			pType := *ref
-			types := []string{}
-			if strings.Contains(pType, "taxonomy") {
+// Remove fields that is not related to taxonomy
+func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *apiext.JSONSchemaProps, listFields *[]crd.TypeIdent) {
+	info, knownInfo := context.parser.Types[typeIdent]
+	if !knownInfo {
+		return
+	} else {
+		types := []string{}
+		for _, typ := range *listFields {
+			types = append(types, typ.Name)
+		}
+		typeFields := info.Fields
+		for _, field := range typeFields {
+			typeName := field.RawField.Type
+			typeNameStr := fmt.Sprintf("%s", typeName)
+			if strings.Contains(typeNameStr, "taxonomy") {
 				continue
 			}
-			split := strings.Split(pType, "/")
-			pType = split[len(split)-1]
-			for _, typ := range *fields {
-				types = append(types, typ.Name)
+			// Get the name of the field
+			words := strings.Fields(typeNameStr)
+			fieldType := words[len(words)-1]
+			if fieldType[len(fieldType)-1:] == "}" {
+				fieldType = fieldType[:len(fieldType)-1]
 			}
-			if !stringInSlice(pType, types) {
-				delete(v.Properties, n)
+			// If the field is not in the wanted list of fields then remove it
+			if !stringInSlice(fieldType, types) {
+				jsonTag, hasTag := field.Tag.Lookup("json")
+				if !hasTag {
+					continue
+				}
+				jsonOpts := strings.Split(jsonTag, ",")
+				delete(v.Properties, jsonOpts[0])
 			}
 		}
 	}
@@ -318,8 +344,11 @@ func (context *GeneratorContext) TypeRefLink(from *loader.Package, to crd.TypeId
 	if fromDocument != toDocument {
 		prefix = toDocument + prefix
 	}
-
-	return prefix + context.definitionNameFor(toDocument, to)
+	suffix := to.Name
+	if !stringInSlice(to.Package.Name, context.pkgDocuments) {
+		suffix = context.definitionNameFor(toDocument, to)
+	}
+	return prefix + suffix
 }
 
 func (context *GeneratorContext) NeedSchemaFor(typ crd.TypeIdent) {
