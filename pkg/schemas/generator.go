@@ -208,13 +208,13 @@ func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 	return ListFields, isTaxonomy
 }
 
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
+func stringInSlice(a string, list []string) int {
+	for i, b := range list {
 		if b == a {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func getRef(prop *apiext.JSONSchemaProps) *string {
@@ -263,13 +263,18 @@ func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *ap
 				fieldType = fieldType[:len(fieldType)-1]
 			}
 			// If the field is not in the wanted list of fields then remove it
-			if !stringInSlice(fieldType, types) {
+			if stringInSlice(fieldType, types) == -1 {
 				jsonTag, hasTag := field.Tag.Lookup("json")
 				if !hasTag {
 					continue
 				}
 				jsonOpts := strings.Split(jsonTag, ",")
 				delete(v.Properties, jsonOpts[0])
+				index := stringInSlice(jsonOpts[0], v.Required)
+				if index != -1 {
+					v.Required[index] = v.Required[len(v.Required)-1]
+					v.Required = v.Required[:len(v.Required)-1]
+				}
 			}
 		}
 	}
@@ -345,7 +350,7 @@ func (context *GeneratorContext) TypeRefLink(from *loader.Package, to crd.TypeId
 		prefix = toDocument + prefix
 	}
 	suffix := to.Name
-	if !stringInSlice(to.Package.Name, context.pkgDocuments) {
+	if stringInSlice(to.Package.Name, context.pkgDocuments) == -1 {
 		suffix = context.definitionNameFor(toDocument, to)
 	}
 	return prefix + suffix
