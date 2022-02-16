@@ -152,7 +152,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 				schemaPtr := parser.Schemata[typeIdent]
 				context.removeExtraProps(typeIdent, &schemaPtr, &listFields)
 				if !exists {
-					document = typeSchema.DeepCopy()
+					document = schemaPtr.DeepCopy()
 					document.Title = documentName
 					document.Definitions = make(apiext.JSONSchemaDefinitions)
 					documents[documentName] = document
@@ -171,6 +171,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 }
 
 // Get the fields that related to taxonomy (has a taxonomy child)
+// It returns true iff the type has a taxonomy child
 func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, bool) {
 	ListFields := []crd.TypeIdent{}
 	isTaxonomy := false
@@ -180,19 +181,19 @@ func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 	} else {
 		fields := info.Fields
 		for _, field := range fields {
-			type_name := field.RawField.Type
-			typeNameStr := fmt.Sprintf("%s", type_name)
+			typeName := field.RawField.Type
+			typeNameStr := fmt.Sprintf("%s", typeName)
 			if strings.Contains(typeNameStr, "taxonomy") {
 				isTaxonomy = true
 				continue
 			}
 
 			words := strings.Fields(typeNameStr)
-			word := words[len(words)-1]
-			if word[len(word)-1:] == "}" {
-				word = word[:len(word)-1]
+			fieldType := words[len(words)-1]
+			if fieldType[len(fieldType)-1:] == "}" {
+				fieldType = fieldType[:len(fieldType)-1]
 			}
-			typeIdentField := crd.TypeIdent{Package: typ.Package, Name: word}
+			typeIdentField := crd.TypeIdent{Package: typ.Package, Name: fieldType}
 			_, fieldKnownInfo := context.parser.Types[typeIdentField]
 			if !fieldKnownInfo {
 				continue
@@ -215,28 +216,6 @@ func stringInSlice(a string, list []string) int {
 		}
 	}
 	return -1
-}
-
-func getRef(prop *apiext.JSONSchemaProps) *string {
-	if prop == nil {
-		return nil
-	}
-	if (*prop).Ref != nil {
-		return (*prop).Ref
-	}
-	if (*prop).AdditionalProperties != nil {
-		ref := getRef((*prop).AdditionalProperties.Schema)
-		if ref != nil {
-			return ref
-		}
-	}
-	if (*prop).Items != nil {
-		ref := getRef(((*prop).Items).Schema)
-		if ref != nil {
-			return ref
-		}
-	}
-	return nil
 }
 
 // Remove fields that is not related to taxonomy
@@ -272,8 +251,9 @@ func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *ap
 				delete(v.Properties, jsonOpts[0])
 				index := stringInSlice(jsonOpts[0], v.Required)
 				if index != -1 {
-					v.Required[index] = v.Required[len(v.Required)-1]
-					v.Required = v.Required[:len(v.Required)-1]
+					len := len(v.Required)
+					v.Required[index] = v.Required[len-1]
+					v.Required = v.Required[:len-1]
 				}
 			}
 		}
