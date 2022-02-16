@@ -2,7 +2,8 @@
 
 Generate JSON schemas from Go structures using controller-tools markers for validation.
 
-This tools outputs a JSON schema for each scanned package that has `+fybrik:validation:schema` marker.
+This tool outputs a JSON schema for each scanned package that has `+fybrik:validation:schema` marker.
+Also, This tool outputs a JSON schema for each scanned type that has `+fybrik:validation:crd` marker.
 Types in scanned packages that lack the marker are outputed to `external.json`
 
 ```
