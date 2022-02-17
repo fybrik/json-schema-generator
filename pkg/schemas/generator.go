@@ -24,7 +24,6 @@ var (
 	externalDocumentName = "external.json"
 	schemaMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:schema", markers.DescribesPackage, struct{}{}))
 	objectMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:object", markers.DescribesType, struct{}{}))
-	crdMarker            = markers.Must(markers.MakeDefinition("fybrik:validation:crd", markers.DescribesType, struct{}{}))
 )
 
 // Generator generates JSON schema objects.
@@ -72,15 +71,13 @@ func (Generator) RegisterMarkers(into *markers.Registry) error {
 		return err
 	}
 
-	if err := markers.RegisterAll(into, schemaMarker, objectMarker, crdMarker); err != nil {
+	if err := markers.RegisterAll(into, schemaMarker, objectMarker); err != nil {
 		return err
 	}
 	into.AddHelp(schemaMarker,
 		markers.SimpleHelp("object", "enable generation of JSON schema definition for the go structure"))
 	into.AddHelp(objectMarker,
 		markers.SimpleHelp("object", "enable generation of JSON schema object for the go structure"))
-	into.AddHelp(crdMarker,
-		markers.SimpleHelp("object", "enable generation of JSON schema object for the go structure of a CRD"))
 	return nil
 }
 
@@ -114,7 +111,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	for typeIdent := range parser.Types {
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
-			if info.Markers.Get(crdMarker.Name) != nil {
+			if info.Markers.Get(objectMarker.Name) != nil {
 				context.pkgDocuments = append(context.pkgDocuments, typeIdent.Package.Name)
 				context.NeedSchemaFor(typeIdent)
 			}
@@ -142,10 +139,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		}
 		document.Definitions[context.definitionNameFor(documentName, typeIdent)] = typeSchema
 
-		// Generate a schema for types with "fybrik:validation:crd" marker
+		// Generate a schema for types with "fybrik:validation:object" marker
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
-			if info.Markers.Get(crdMarker.Name) != nil {
+			if info.Markers.Get(objectMarker.Name) != nil {
 				documentName := fmt.Sprintf("%s.json", info.Name)
 				document, exists := documents[documentName]
 				listFields, _ := context.getFields(typeIdent)
