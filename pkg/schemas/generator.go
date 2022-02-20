@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/types"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,10 +43,11 @@ type Generator struct {
 }
 
 type GeneratorContext struct {
-	ctx          *genall.GenerationContext
-	parser       *crd.Parser
-	pkgDocuments []string
-	pkgMarkers   map[*loader.Package]markers.MarkerValues
+	ctx    *genall.GenerationContext
+	parser *crd.Parser
+	// Array of packages that have a type with object marker
+	objectPkgs []string
+	pkgMarkers map[*loader.Package]markers.MarkerValues
 }
 
 func (Generator) CheckFilter() loader.NodeFilter {
@@ -90,10 +92,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	crd.AddKnownTypes(parser)
 
 	context := &GeneratorContext{
-		ctx:          ctx,
-		parser:       parser,
-		pkgDocuments: []string{},
-		pkgMarkers:   make(map[*loader.Package]markers.MarkerValues),
+		ctx:        ctx,
+		parser:     parser,
+		objectPkgs: []string{},
+		pkgMarkers: make(map[*loader.Package]markers.MarkerValues),
 	}
 
 	// Load input packages
@@ -112,7 +114,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
 			if info.Markers.Get(objectMarker.Name) != nil {
-				context.pkgDocuments = append(context.pkgDocuments, typeIdent.Package.Name)
+				context.objectPkgs = append(context.objectPkgs, typeIdent.Package.Name)
 				context.NeedSchemaFor(typeIdent)
 			}
 		}
@@ -178,24 +180,22 @@ func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 	} else {
 		fields := info.Fields
 		for _, field := range fields {
-			typeName := field.RawField.Type
-			typeNameStr := fmt.Sprintf("%s", typeName)
-			if strings.Contains(typeNameStr, "taxonomy") {
-				isTaxonomy = true
-				continue
-			}
+			fieldTypeName := field.RawField.Type
+			// Create a crd.typeIdent for the field
+			typeIdentField := typeToTypeIdent(fieldTypeName, typ.Package)
 
-			words := strings.Fields(typeNameStr)
-			fieldType := words[len(words)-1]
-			if fieldType[len(fieldType)-1:] == "}" {
-				fieldType = fieldType[:len(fieldType)-1]
-			}
-			typeIdentField := crd.TypeIdent{Package: typ.Package, Name: fieldType}
 			_, fieldKnownInfo := context.parser.Types[typeIdentField]
 			if !fieldKnownInfo {
 				continue
 			}
+			// Check if the field is from a package with the `schema` marker
+			if context.pkgMarkers[typeIdentField.Package].Get(schemaMarker.Name) != nil {
+				isTaxonomy = true
+				continue
+			}
+			// Get the fields of the current field (child)
 			childListFields, childTaxonomy := context.getFields(typeIdentField)
+			// If the child is related to taxonomy, then add the child and his fields list to the parent fields list
 			if childTaxonomy {
 				ListFields = append(ListFields, typeIdentField)
 				ListFields = append(ListFields, childListFields...)
@@ -206,7 +206,44 @@ func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 	return ListFields, isTaxonomy
 }
 
-func stringInSlice(a string, list []string) int {
+// Create a crd.TypeIdent for a given AST type
+func typeToTypeIdent(fieldTypeName ast.Expr, pkg *loader.Package) crd.TypeIdent {
+	typeIdentField := crd.TypeIdent{Package: nil, Name: ""}
+	switch expr := fieldTypeName.(type) {
+	case *ast.Ident, *ast.SelectorExpr, *ast.StructType:
+		typeInfo := pkg.TypesInfo.TypeOf(expr)
+		if namedInfo, isNamed := typeInfo.(*types.Named); isNamed {
+			pkgPath := loader.NonVendorPath(namedInfo.Obj().Pkg().Path())
+			typeIdentField = typeIdentFor(pkgPath, namedInfo.Obj().Name(), pkg)
+		}
+	case *ast.ArrayType:
+		typeIdentField = typeToTypeIdent(expr.Elt, pkg)
+	case *ast.MapType:
+		typeIdentField = typeToTypeIdent(expr.Value, pkg)
+	case *ast.StarExpr:
+		typeIdentField = typeToTypeIdent(expr.X, pkg)
+	}
+	return typeIdentField
+}
+
+// Create a crt.TypeIdent for a type with a given package path
+func typeIdentFor(pkgPath, typeName string, pkg *loader.Package) crd.TypeIdent {
+	if pkgPath == pkg.PkgPath {
+		return crd.TypeIdent{
+			Package: pkg,
+			Name:    typeName,
+		}
+	}
+	if pkgPath != "" {
+		pkg = pkg.Imports()[pkgPath]
+	}
+	return crd.TypeIdent{
+		Package: pkg,
+		Name:    typeName,
+	}
+}
+
+func indexOf(a string, list []string) int {
 	for i, b := range list {
 		if b == a {
 			return i
@@ -221,32 +258,29 @@ func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *ap
 	if !knownInfo {
 		return
 	} else {
-		types := []string{}
+		fieldTypes := []string{}
 		for _, typ := range *listFields {
-			types = append(types, typ.Name)
+			fieldTypes = append(fieldTypes, typ.Name)
 		}
 		typeFields := info.Fields
 		for _, field := range typeFields {
-			typeName := field.RawField.Type
-			typeNameStr := fmt.Sprintf("%s", typeName)
-			if strings.Contains(typeNameStr, "taxonomy") {
+			fieldTypeName := field.RawField.Type
+			// Get the crd.TypeIdent of the current field
+			typeIdentField := typeToTypeIdent(fieldTypeName, typeIdent.Package)
+			// If the field has a type from a package with the `schema` marker then keep it
+			if context.pkgMarkers[typeIdentField.Package].Get(schemaMarker.Name) != nil {
 				continue
 			}
-			// Get the name of the field
-			words := strings.Fields(typeNameStr)
-			fieldType := words[len(words)-1]
-			if fieldType[len(fieldType)-1:] == "}" {
-				fieldType = fieldType[:len(fieldType)-1]
-			}
-			// If the field is not in the wanted list of fields then remove it
-			if stringInSlice(fieldType, types) == -1 {
+			// If the field is not in the list of the needed fields then remove it from the schema
+			_, fieldKnownInfo := context.parser.Types[typeIdentField]
+			if indexOf(typeIdentField.Name, fieldTypes) == -1 || !fieldKnownInfo {
 				jsonTag, hasTag := field.Tag.Lookup("json")
 				if !hasTag {
 					continue
 				}
 				jsonOpts := strings.Split(jsonTag, ",")
 				delete(v.Properties, jsonOpts[0])
-				index := stringInSlice(jsonOpts[0], v.Required)
+				index := indexOf(jsonOpts[0], v.Required)
 				if index != -1 {
 					len := len(v.Required)
 					v.Required[index] = v.Required[len-1]
@@ -326,8 +360,11 @@ func (context *GeneratorContext) TypeRefLink(from *loader.Package, to crd.TypeId
 	if fromDocument != toDocument {
 		prefix = toDocument + prefix
 	}
+	// Build the suffix string as a <typeName> if the type is in a package with
+	// the `schema` marker or in a package with a type that has the `object` marker
+	// Otherwise, the suffix will be build using qualifiedName function
 	suffix := to.Name
-	if stringInSlice(to.Package.Name, context.pkgDocuments) == -1 {
+	if indexOf(to.Package.Name, context.objectPkgs) == -1 {
 		suffix = context.definitionNameFor(toDocument, to)
 	}
 	return prefix + suffix
