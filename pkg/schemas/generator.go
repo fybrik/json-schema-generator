@@ -255,9 +255,7 @@ func indexOf(a string, list []string) int {
 // Remove fields that is not related to taxonomy
 func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *apiext.JSONSchemaProps, listFields *[]crd.TypeIdent) {
 	info, knownInfo := context.parser.Types[typeIdent]
-	if !knownInfo {
-		return
-	} else {
+	if knownInfo {
 		fieldTypes := []string{}
 		for _, typ := range *listFields {
 			fieldTypes = append(fieldTypes, typ.Name)
