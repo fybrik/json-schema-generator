@@ -121,7 +121,7 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
 			if info.Markers.Get(objectMarker.Name) != nil {
-				context.objectPkgs = append(context.objectPkgs, typeIdent.Package.Name)
+				context.objectPkgs = append(context.objectPkgs, typeIdent.Package.PkgPath)
 				context.NeedSchemaFor(typeIdent)
 			}
 		}
@@ -367,7 +367,7 @@ func (context *GeneratorContext) TypeRefLink(from *loader.Package, to crd.TypeId
 	// the `schema` marker or in a package with a type that has the `object` marker
 	// Otherwise, the suffix will be build using qualifiedName function
 	suffix := to.Name
-	if indexOf(to.Package.Name, context.objectPkgs) == -1 {
+	if indexOf(to.Package.PkgPath, context.objectPkgs) == -1 {
 		suffix = context.definitionNameFor(toDocument, to)
 	}
 	return prefix + suffix
