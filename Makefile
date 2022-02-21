@@ -4,7 +4,7 @@ build-tool:
 
 .PHONY: generate
 generate:
-	./json-schema-generator -r ./test/crd -o ./testdata/schema
+	./json-schema-generator -r ./testPkgs/crd -o ./testdata/schema
 
 .PHONY: test
 test: generate

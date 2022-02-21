@@ -2,11 +2,9 @@ package schemas
 
 import (
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"testing"
 
-	"emperror.dev/errors"
 	crdPkg "fybrik.io/json-schema-generator/testPkgs/crd"
 	"fybrik.io/json-schema-generator/testPkgs/schemaPkg"
 	"github.com/xeipuuv/gojsonschema"
@@ -29,8 +27,7 @@ func TestValidApp(t *testing.T) {
 	documentLoader := gojsonschema.NewBytesLoader(resourceJSON)
 	result, err := gojsonschema.Validate(taxonomyLoader, documentLoader)
 	if err != nil {
-		e := errors.Wrap(err, "could not validate resource against the provided schema, check files at "+filepath.Dir(schemaPath))
-		t.Errorf(" %v\n", e)
+		t.Errorf("could not validate resource against the provided schema, err: %v\n", err)
 		return
 	}
 	errors := result.Errors()
@@ -60,8 +57,7 @@ func TestInvalidApp(t *testing.T) {
 	documentLoader := gojsonschema.NewBytesLoader(resourceJSON)
 	result, err := gojsonschema.Validate(taxonomyLoader, documentLoader)
 	if err != nil {
-		e := errors.Wrap(err, "could not validate resource against the provided schema, check files at "+filepath.Dir(schemaPath))
-		t.Errorf(" %v\n", e)
+		t.Errorf("could not validate resource against the provided schema, err: %v\n", err)
 		return
 	}
 	errors := result.Errors()
@@ -98,6 +94,5 @@ func createInvalidResource() ([]byte, error) {
 	crd.Field1 = field1
 	crd.Field3 = "crd"
 	buf, err := json.Marshal(crd)
-	fmt.Printf("%s\n", buf)
 	return buf, err
 }
