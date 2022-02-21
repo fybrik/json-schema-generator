@@ -175,9 +175,7 @@ func (context *GeneratorContext) getFields(typ crd.TypeIdent) ([]crd.TypeIdent, 
 	ListFields := []crd.TypeIdent{}
 	isTaxonomy := false
 	info, knownInfo := context.parser.Types[typ]
-	if !knownInfo {
-		return ListFields, false
-	} else {
+	if knownInfo {
 		fields := info.Fields
 		for _, field := range fields {
 			fieldTypeName := field.RawField.Type
