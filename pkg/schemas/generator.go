@@ -24,8 +24,15 @@ import (
 var (
 	externalDocumentName = "external.json"
 	schemaMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:schema", markers.DescribesPackage, struct{}{}))
-	objectMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:object", markers.DescribesType, struct{}{}))
+	objectMarker         = markers.Must(markers.MakeDefinition("fybrik:validation:object", markers.DescribesType, ObjName("")))
 )
+
+type ObjName string
+
+func (n ObjName) ApplyToSchema(schema *apiext.JSONSchemaProps) error {
+	schema.Title = string(n)
+	return nil
+}
 
 // Generator generates JSON schema objects.
 type Generator struct {
@@ -145,10 +152,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
 			if info.Markers.Get(objectMarker.Name) != nil {
-				documentName := fmt.Sprintf("%s.json", info.Name)
-				document, exists := documents[documentName]
 				listFields, _ := context.getFields(typeIdent)
 				schemaPtr := parser.Schemata[typeIdent]
+				documentName := fmt.Sprintf("%s.json", schemaPtr.Title)
+				document, exists := documents[documentName]
 				context.removeExtraProps(typeIdent, &schemaPtr, &listFields)
 				if !exists {
 					document = schemaPtr.DeepCopy()
