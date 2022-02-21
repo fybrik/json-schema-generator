@@ -278,9 +278,9 @@ func (context *GeneratorContext) removeExtraProps(typeIdent crd.TypeIdent, v *ap
 				delete(v.Properties, jsonOpts[0])
 				index := indexOf(jsonOpts[0], v.Required)
 				if index != -1 {
-					len := len(v.Required)
-					v.Required[index] = v.Required[len-1]
-					v.Required = v.Required[:len-1]
+					length := len(v.Required)
+					v.Required[index] = v.Required[length-1]
+					v.Required = v.Required[:length-1]
 				}
 			}
 		}
