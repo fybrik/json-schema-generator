@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	crdPkg "fybrik.io/json-schema-generator/testPkgs/crd"
-	"fybrik.io/json-schema-generator/testPkgs/schemaPkg"
 	"github.com/xeipuuv/gojsonschema"
+
+	crdpkg "fybrik.io/json-schema-generator/testPkgs/crd"
+	schemapkg "fybrik.io/json-schema-generator/testPkgs/schemaPkg"
 )
 
 func TestValidApp(t *testing.T) {
@@ -73,11 +74,11 @@ func TestInvalidApp(t *testing.T) {
 }
 
 func createResource() ([]byte, error) {
-	crd := crdPkg.SampleCrd{}
-	schemaType1 := schemaPkg.SchemaType1{}
+	crd := crdpkg.SampleCrd{}
+	schemaType1 := schemapkg.SchemaType1{}
 	schemaType1.SchemaF1 = true
 	schemaType1.SchemaF2 = "schema"
-	field1 := crdPkg.Type1{}
+	field1 := crdpkg.Type1{}
 	field1.Type1F1 = schemaType1
 	crd.Field1 = field1
 	crd.Field3 = "crd"
@@ -86,10 +87,10 @@ func createResource() ([]byte, error) {
 }
 
 func createInvalidResource() ([]byte, error) {
-	crd := crdPkg.SampleCrd{}
-	schemaType1 := schemaPkg.SchemaType1{}
+	crd := crdpkg.SampleCrd{}
+	schemaType1 := schemapkg.SchemaType1{}
 	schemaType1.SchemaF1 = true
-	field1 := crdPkg.Type1{}
+	field1 := crdpkg.Type1{}
 	field1.Type1F1 = schemaType1
 	crd.Field1 = field1
 	crd.Field3 = "crd"

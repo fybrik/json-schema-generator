@@ -1,4 +1,4 @@
-package schemaPkg
+package schemapkg
 
 type SchemaType1 struct {
 

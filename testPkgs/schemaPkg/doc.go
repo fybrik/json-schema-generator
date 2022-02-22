@@ -3,4 +3,4 @@
 
 // +kubebuilder:validation:Optional
 // +fybrik:validation:schema
-package schemaPkg
+package schemapkg

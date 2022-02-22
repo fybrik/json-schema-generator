@@ -1,6 +1,6 @@
-package crdPkg
+package crdpkg
 
-import "fybrik.io/json-schema-generator/testPkgs/schemaPkg"
+import schemapkg "fybrik.io/json-schema-generator/testPkgs/schemaPkg"
 
 // +fybrik:validation:object="sample_crd"
 type SampleCrd struct {
@@ -10,7 +10,7 @@ type SampleCrd struct {
 }
 
 type Type1 struct {
-	Type1F1 schemaPkg.SchemaType1 `json:"type1f1,omitempty"`
+	Type1F1 schemapkg.SchemaType1 `json:"type1f1,omitempty"`
 	Type1F2 string                `json:"type1f2,omitempty"`
 }
 
