@@ -7,7 +7,7 @@ import (
 
 	"github.com/xeipuuv/gojsonschema"
 
-	crdpkg "fybrik.io/json-schema-generator/testPkgs/crd"
+	fybrikobject "fybrik.io/json-schema-generator/testPkgs/fybrikobject"
 	schemapkg "fybrik.io/json-schema-generator/testPkgs/schemaPkg"
 )
 
@@ -74,11 +74,11 @@ func TestInvalidApp(t *testing.T) {
 }
 
 func createResource() ([]byte, error) {
-	crd := crdpkg.SampleCrd{}
+	crd := fybrikobject.SampleCrd{}
 	schemaType1 := schemapkg.SchemaType1{}
 	schemaType1.SchemaF1 = true
 	schemaType1.SchemaF2 = "schema"
-	field1 := crdpkg.Type1{}
+	field1 := fybrikobject.Type1{}
 	field1.Type1F1 = schemaType1
 	crd.Field1 = field1
 	crd.Field3 = "crd"
@@ -87,10 +87,10 @@ func createResource() ([]byte, error) {
 }
 
 func createInvalidResource() ([]byte, error) {
-	crd := crdpkg.SampleCrd{}
+	crd := fybrikobject.SampleCrd{}
 	schemaType1 := schemapkg.SchemaType1{}
 	schemaType1.SchemaF1 = true
-	field1 := crdpkg.Type1{}
+	field1 := fybrikobject.Type1{}
 	field1.Type1F1 = schemaType1
 	crd.Field1 = field1
 	crd.Field3 = "crd"

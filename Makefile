@@ -2,10 +2,11 @@
 build-tool:
 	go build
 
-.PHONY: generate
-generate:
-	./json-schema-generator -r ./testPkgs/crd -o ./testdata/schema
+.PHONY: generate-test-data
+generate-test-data:
+	./json-schema-generator -r ./testPkgs/fybrikobject -o ./testdata/schema
 
 .PHONY: test
-test: generate
+test: build-tool
+test: generate-test-data
 	go test -v ./...
