@@ -8,7 +8,7 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 
 	fybrikobject "fybrik.io/json-schema-generator/testPkgs/fybrikobject"
-	schemapkg "fybrik.io/json-schema-generator/testPkgs/schemaPkg"
+	schemapkg "fybrik.io/json-schema-generator/testPkgs/schemapkg"
 )
 
 func TestValidApp(t *testing.T) {
