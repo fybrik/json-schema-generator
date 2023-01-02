@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	orderedmap "github.com/wk8/go-ordered-map/v2"
+
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/controller-tools/pkg/crd"
 	crdmarkers "sigs.k8s.io/controller-tools/pkg/crd/markers"
@@ -50,8 +52,9 @@ type Generator struct {
 }
 
 type GeneratorContext struct {
-	ctx    *genall.GenerationContext
-	parser *crd.Parser
+	ctx     *genall.GenerationContext
+	parser  *crd.Parser
+	typesOM *orderedmap.OrderedMap[crd.TypeIdent, struct{}]
 	// Array of packages that have a type with object marker
 	objectPkgs []string
 	pkgMarkers map[*loader.Package]markers.MarkerValues
@@ -90,6 +93,26 @@ func (Generator) RegisterMarkers(into *markers.Registry) error {
 	return nil
 }
 
+// Load new types to the ordered map
+func (ctx *GeneratorContext) loadTypes() {
+	for typeIdent := range ctx.parser.Types {
+		if _, there := ctx.typesOM.Get(typeIdent); !there {
+			ctx.typesOM.Set(typeIdent, struct{}{})
+		}
+	}
+}
+
+// A wrapper to Parser.NeedPackage
+// If the number of types changes it loads new types to the ordered map
+func (ctx *GeneratorContext) needPackage(pkg *loader.Package) {
+	n := len(ctx.parser.Types)
+	ctx.parser.NeedPackage(pkg)
+	m := len(ctx.parser.Types)
+	if n != m {
+		ctx.loadTypes()
+	}
+}
+
 func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	parser := &crd.Parser{
 		Collector:           ctx.Collector,
@@ -101,13 +124,14 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	context := &GeneratorContext{
 		ctx:        ctx,
 		parser:     parser,
+		typesOM:    orderedmap.New[crd.TypeIdent, struct{}](),
 		objectPkgs: []string{},
 		pkgMarkers: make(map[*loader.Package]markers.MarkerValues),
 	}
 
 	// Load input packages
 	for _, root := range ctx.Roots {
-		parser.NeedPackage(root)
+		context.needPackage(root)
 		// Load package markers
 		pkgMarkers, err := markers.PackageMarkers(parser.Collector, root)
 		if err != nil {
@@ -117,7 +141,8 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 	}
 
 	// Scan loaded types
-	for typeIdent := range parser.Types {
+	for pair := context.typesOM.Oldest(); pair != nil; pair = pair.Next() {
+		typeIdent := pair.Key
 		info, knownInfo := parser.Types[typeIdent]
 		if knownInfo {
 			if info.Markers.Get(objectMarker.Name) != nil {
@@ -376,7 +401,7 @@ func (context *GeneratorContext) TypeRefLink(from *loader.Package, to crd.TypeId
 func (context *GeneratorContext) NeedSchemaFor(typ crd.TypeIdent) {
 	p := context.parser
 
-	context.parser.NeedPackage(typ.Package)
+	context.needPackage(typ.Package)
 	if _, knownSchema := context.parser.Schemata[typ]; knownSchema {
 		return
 	}

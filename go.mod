@@ -1,6 +1,6 @@
 module fybrik.io/json-schema-generator
 
-go 1.17
+go 1.18
 
 require (
 	github.com/spf13/cobra v1.6.1
@@ -19,6 +19,8 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/wk8/go-ordered-map v1.0.0
+	github.com/wk8/go-ordered-map/v2 v2.1.5
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	golang.org/x/mod v0.7.0 // indirect
