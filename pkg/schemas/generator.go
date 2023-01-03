@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	orderedmap "github.com/wk8/go-ordered-map/v2"
-
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/controller-tools/pkg/crd"
 	crdmarkers "sigs.k8s.io/controller-tools/pkg/crd/markers"
@@ -94,22 +93,22 @@ func (Generator) RegisterMarkers(into *markers.Registry) error {
 }
 
 // Load new types to the ordered map
-func (ctx *GeneratorContext) loadTypes() {
-	for typeIdent := range ctx.parser.Types {
-		if _, there := ctx.typesOM.Get(typeIdent); !there {
-			ctx.typesOM.Set(typeIdent, struct{}{})
+func (context *GeneratorContext) loadTypes() {
+	for typeIdent := range context.parser.Types {
+		if _, there := context.typesOM.Get(typeIdent); !there {
+			context.typesOM.Set(typeIdent, struct{}{})
 		}
 	}
 }
 
 // A wrapper to Parser.NeedPackage
 // If the number of types changes it loads new types to the ordered map
-func (ctx *GeneratorContext) needPackage(pkg *loader.Package) {
-	n := len(ctx.parser.Types)
-	ctx.parser.NeedPackage(pkg)
-	m := len(ctx.parser.Types)
+func (context *GeneratorContext) needPackage(pkg *loader.Package) {
+	n := len(context.parser.Types)
+	context.parser.NeedPackage(pkg)
+	m := len(context.parser.Types)
 	if n != m {
-		ctx.loadTypes()
+		context.loadTypes()
 	}
 }
 
